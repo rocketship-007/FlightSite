@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Flight Tracker with Map</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+
+    <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
+
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+            margin-top: 20px;
+            border-radius: 8px;
+            border: 2px solid #ccc;
+        }
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+        .Label {
+            margin-bottom: 2px;
+            font-size: 16px;
+        }
+        h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+
+<h1 id="Flight">Put info in the text box and click enter</h1>
+
+<input
+  type="text"
+  id="name"
+  name="name"
+  placeholder="e.g., AAL2071"
+  required
+  size="10" />
+<button onclick="startTracking()">Enter</button>
+
+<h2 class="Label">Latitude:</h2>
+<h3 id="Lat">-</h3>
+
+<h2 class="Label">Longitude:</h2>
+<h3 id="Lon">-</h3>
+
+<h2 class="Label">Speed(knots):</h2>
+<h3 id="Speed">-</h3>
+
+<h2 class="Label">Altitude(feet)</h2>
+<h3 id="Alt">-</h3>
+
+<div id="map"></div>
+
+<script>
+var trackingInterval;
+var map;
+var planeMarker;
+
+// Define your custom plane icon using your local file path
+var planeIcon = L.icon({
+    iconUrl: 'plane.png',
+    iconSize: [32, 32],      // Size of the icon in pixels (adjust if your image is too big/small)
+    iconAnchor: [16, 16],    // Point of the icon which will correspond to marker's location (centered)
+    popupAnchor: [0, -16]    // Point from which the popup should open relative to the iconAnchor
+});
+
+// Initialize Leaflet Map with OpenFreeMap Vector Tiles
+function initMap() {
+    if (!map) {
+        map = L.map('map').setView([20, 0], 2);
+        
+        L.maplibreGL({
+            style: 'https://tiles.openfreemap.org/styles/liberty',
+            attribution: '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+    }
+}
+
+// Data processor utilizing modern fetch() directly to the API
+function fetchFlightData() {
+    var callsign = document.getElementById("name").value.trim().toUpperCase();
+    
+    if (!callsign) {
+        alert("Please enter a callsign first!");
+        clearInterval(trackingInterval);
+        return;
+    }
+
+    var apiUrl = `https://api.airplanes.live/v2/callsign/${callsign}`;
+
+    fetch(apiUrl)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.ac && data.ac.length > 0) {
+                var flightInfo = data.ac[0];
+                var lat = flightInfo.lat;
+                var lon = flightInfo.lon;
+
+                // Update text fields
+                document.getElementById("Lat").innerHTML = lat || 'N/A';
+                document.getElementById("Lon").innerHTML = lon || 'N/A'; 
+                document.getElementById("Speed").innerHTML = flightInfo.gs || 'N/A'; 
+                document.getElementById("Alt").innerHTML = flightInfo.alt_baro || 'N/A'; 
+
+                // Process map coordinates
+                if (lat && lon) {
+                    var position = [lat, lon];
+                    
+                    if (!planeMarker) {
+                        // Added custom icon property here
+                        planeMarker = L.marker(position, { icon: planeIcon }).addTo(map);
+                    } else {
+                        planeMarker.setLatLng(position);
+                    }
+                    
+                    planeMarker.bindPopup(`<b>${callsign}</b><br>Alt: ${flightInfo.alt_baro || 0} ft<br>Speed: ${flightInfo.gs || 0} kts`).openPopup();
+                    map.setView(position, 9); 
+                }
+            } else {
+                console.log("No live flight data found for this callsign right now.");
+                clearFields('Not Airborne / Not Found');
+            }
+        })
+        .catch(err => {
+            console.error("Fetch operation failed:", err);
+            clearFields('Error Loading');
+        });
+}
+
+function clearFields(message) {
+    document.getElementById("Lat").innerHTML = message;
+    document.getElementById("Lon").innerHTML = message; 
+    document.getElementById("Speed").innerHTML = message; 
+    document.getElementById("Alt").innerHTML = message; 
+}
+
+function startTracking() {
+    clearInterval(trackingInterval);
+    initMap(); 
+    fetchFlightData();
+    trackingInterval = setInterval(fetchFlightData, 5000);
+}
+</script>
+
+</body>
+</html>
